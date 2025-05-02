@@ -20,3 +20,4 @@ repos:
           - pre-commit
           - manual
           - pre-push
+        language: system
