@@ -1,12 +1,28 @@
 import enum
 import pydantic
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 
 from stride.config import strava_config
 from stride.connections.strava import StravaEndpoint
 
 import requests  # type: ignore
+
+
+class StreamType(str, enum.Enum):
+    """Types of data streams available from Strava."""
+
+    TIME = "time"
+    DISTANCE = "distance"
+    LATLNG = "latlng"
+    ALTITUDE = "altitude"
+    VELOCITY_SMOOTH = "velocity_smooth"
+    HEARTRATE = "heartrate"
+    CADENCE = "cadence"
+    WATTS = "watts"
+    TEMP = "temp"
+    MOVING = "moving"
+    GRADE_SMOOTH = "grade_smooth"
 
 
 class StravaActivity(pydantic.BaseModel):
@@ -41,20 +57,6 @@ class StravaActivity(pydantic.BaseModel):
     suffer_score: Optional[int] = None
 
 
-class StreamType(str, enum.Enum):
-    TIME = "time"
-    DISTANCE = "distance"
-    LATLNG = "latlng"
-    ALTITUDE = "altitude"
-    VELOCITY_SMOOTH = "velocity_smooth"
-    HEARTRATE = "heartrate"
-    CADENCE = "cadence"
-    WATTS = "watts"
-    TEMP = "temp"
-    MOVING = "moving"
-    GRADE_SMOOTH = "grade_smooth"
-
-
 class Stream(pydantic.BaseModel):
     """Model representing a Strava stream."""
 
@@ -62,54 +64,82 @@ class Stream(pydantic.BaseModel):
     data: list[float]
 
 
-def list_strava_activities(per_page: int = 2, page: int = 1) -> list[StravaActivity]:
-    """List activities for the authenticated Strava athlete."""
-    # Reload config each time to get fresh values
-
-    url = StravaEndpoint.ATHLETE_ACTIVITIES.value
+def _strava_request(url: str, params: dict[str, Any] | None = None) -> requests.Response:
+    """Make a request to the Strava API."""
+    params = params or {}
     headers = {"Authorization": strava_config.get_bearer_token()}
-    params = {"per_page": per_page, "page": page}
     response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
+    return response
 
-    # Convert the JSON response to StravaActivity objects
-    activities_data = response.json()
-    return [StravaActivity(**activity) for activity in activities_data]
+
+def list_strava_activities(per_page: int = 2, page: int = 1) -> list[StravaActivity]:
+    """List activities for the authenticated Strava athlete."""
+    url = StravaEndpoint.ATHLETE_ACTIVITIES.value
+    params = {"per_page": per_page, "page": page}
+    response = _strava_request(url, params)
+    return [StravaActivity(**activity) for activity in response.json()]
 
 
 def get_strava_activity(activity_id: int) -> StravaActivity:
     """Get a specific Strava activity by ID."""
-    # Remove the /athlete prefix from the base URL
-    base_url = StravaEndpoint.ACTIVITY.value
-    url = base_url.format(activity_id=activity_id)
-    headers = {"Authorization": strava_config.get_bearer_token()}
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    print(response.json())
+    url = StravaEndpoint.ACTIVITY.value.format(activity_id=activity_id)
+    response = _strava_request(url)
     return StravaActivity(**response.json())
 
 
 def get_strava_activity_streams(activity_id: int) -> list[Stream]:
-    """Get streams for a specific Strava activity by ID."""
-    # Remove the /athlete prefix from the base URL
-    base_url = StravaEndpoint.ACTIVITY_STREAMS.value
-    url = base_url.format(activity_id=activity_id)
-    headers = {"Authorization": strava_config.get_bearer_token()}
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
+    """Get all streams for a specific Strava activity by ID."""
+    url = StravaEndpoint.ACTIVITY_STREAMS.value.format(activity_id=activity_id)
+    response = _strava_request(url)
     return [Stream(**stream) for stream in response.json()]
+
+
+def _check_stream_type(response_element: dict[str, Any], stream_type: StreamType) -> bool:
+    """Check if a stream exists for a specific Strava activity by type."""
+    return stream_type.value in response_element
+
+
+def _validate_stream_response(response: requests.Response, stream_type: StreamType) -> bool:
+    """Validate the response from the Strava API."""
+    response_data = response.json()
+
+    # Handle single stream response
+    if isinstance(response_data, dict) and _check_stream_type(response_data, stream_type):
+        return True
+
+    # Handle multiple streams response
+    if isinstance(response_data, list) and any(_check_stream_type(stream, stream_type) for stream in response_data):
+        return True
+
+    raise ValueError(f"Stream type {stream_type.value} not found in response: {response_data}")
+
+
+def _extract_stream_data(response_data: dict[str, Any] | list[dict[str, Any]], stream_type: StreamType) -> dict[str, Any]:
+    """Extract stream data from the response."""
+    if isinstance(response_data, dict):
+        return response_data
+
+    if isinstance(response_data, list):
+        for stream in response_data:
+            if stream.get("type") == stream_type.value:
+                return stream
+
+    raise ValueError(f"Could not extract {stream_type.value} data from response")
 
 
 def get_strava_activity_stream_by_type(activity_id: int, stream_type: StreamType) -> Stream:
     """Get a specific stream for a Strava activity by type."""
-    base_url = StravaEndpoint.ACTIVITY_STREAMS_BY_TYPE.value
-    url = base_url.format(activity_id=activity_id, stream_type=stream_type)
-    print(url)
-    headers = {"Authorization": strava_config.get_bearer_token()}
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    # print(response.json())
-    return Stream(**response.json())
+    url = StravaEndpoint.ACTIVITY_STREAMS_BY_TYPE.value.format(activity_id=activity_id, stream_type=stream_type.value)
+    response = _strava_request(url)
+
+    # Validate the response contains the requested stream type
+    _validate_stream_response(response, stream_type)
+
+    # Extract the stream data
+    stream_data = _extract_stream_data(response.json(), stream_type)
+
+    return Stream(type=stream_type, data=stream_data)
 
 
 if __name__ == "__main__":
@@ -119,7 +149,7 @@ if __name__ == "__main__":
 
     # Test the get_strava_activity function
     test_id = activities[0].id
-    print(get_strava_activity(test_id))
+    # print(get_strava_activity(test_id))
 
     # Test the get_strava_activity_streams function
     # print(get_strava_activity_streams(test_id))
