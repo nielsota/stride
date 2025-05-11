@@ -97,7 +97,7 @@ def get_strava_activity_streams(activity_id: int) -> list[Stream]:
 
 def _check_stream_type(response_element: dict[str, Any], stream_type: StreamType) -> bool:
     """Check if a stream exists for a specific Strava activity by type."""
-    return stream_type.value in response_element
+    return stream_type.value in response_element.values()
 
 
 def _validate_stream_response(response: requests.Response, stream_type: StreamType) -> bool:
@@ -139,7 +139,7 @@ def get_strava_activity_stream_by_type(activity_id: int, stream_type: StreamType
     # Extract the stream data
     stream_data = _extract_stream_data(response.json(), stream_type)
 
-    return Stream(type=stream_type, data=stream_data)
+    return Stream(type=stream_type, data=stream_data["data"])
 
 
 if __name__ == "__main__":
