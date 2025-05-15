@@ -63,6 +63,37 @@ class Stream(pydantic.BaseModel):
     type: StreamType
     data: list[float]
 
+    @pydantic.computed_field  # type: ignore[prop-decorator]
+    @property
+    def stream_length(self) -> int:
+        """Get the length of the stream."""
+        return len(self.data)
+
+
+class VelocitySmoothStream(Stream):
+    """Model representing a Strava velocity smooth stream."""
+
+    type: StreamType = StreamType.VELOCITY_SMOOTH
+    data: list[float]
+
+    @pydantic.computed_field  # type: ignore[prop-decorator]
+    @property
+    def velocity_kmh(self) -> list[float]:
+        """Convert velocity from m/s to km/h."""
+        return [round(v * 3.6, 2) for v in self.data]
+
+
+StreamTypeToStream: dict[StreamType, type[Stream]] = {
+    StreamType.VELOCITY_SMOOTH: VelocitySmoothStream,
+    StreamType.DISTANCE: Stream,
+    StreamType.HEARTRATE: Stream,
+    StreamType.CADENCE: Stream,
+    StreamType.WATTS: Stream,
+    StreamType.TEMP: Stream,
+    StreamType.MOVING: Stream,
+    StreamType.GRADE_SMOOTH: Stream,
+}
+
 
 def _strava_request(url: str, params: dict[str, Any] | None = None) -> requests.Response:
     """Make a request to the Strava API."""
@@ -139,7 +170,7 @@ def get_strava_activity_stream_by_type(activity_id: int, stream_type: StreamType
     # Extract the stream data
     stream_data = _extract_stream_data(response.json(), stream_type)
 
-    return Stream(type=stream_type, data=stream_data["data"])
+    return StreamTypeToStream[stream_type](type=stream_type, data=stream_data["data"])
 
 
 if __name__ == "__main__":
@@ -148,7 +179,7 @@ if __name__ == "__main__":
     # print(activities)
 
     # Test the get_strava_activity function
-    test_id = activities[0].id
+    test_id = activities[1].id
     # print(get_strava_activity(test_id))
 
     # Test the get_strava_activity_streams function
@@ -156,3 +187,5 @@ if __name__ == "__main__":
 
     # Test the get_strava_activity_stream_by_type function
     print(get_strava_activity_stream_by_type(test_id, StreamType.HEARTRATE))
+    print(get_strava_activity_stream_by_type(test_id, StreamType.DISTANCE))
+    print(get_strava_activity_stream_by_type(test_id, StreamType.VELOCITY_SMOOTH))
