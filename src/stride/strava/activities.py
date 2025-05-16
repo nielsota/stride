@@ -2,6 +2,7 @@ import enum
 import pydantic
 from datetime import datetime
 from typing import Optional, Any
+from loguru import logger
 
 from stride.config import strava_config
 from stride.connections.strava import StravaEndpoint
@@ -61,7 +62,7 @@ class Stream(pydantic.BaseModel):
     """Model representing a Strava stream."""
 
     type: StreamType
-    data: list[float]
+    data: list[float | bool | None]
 
     @pydantic.computed_field  # type: ignore[prop-decorator]
     @property
@@ -83,9 +84,19 @@ class VelocitySmoothStream(Stream):
         return [round(v * 3.6, 2) for v in self.data]
 
 
+class LatLngStream(Stream):
+    """Model representing a Strava latlng stream."""
+
+    type: StreamType = StreamType.LATLNG
+    data: list[list[float] | None]  # list of [lat, lng] pairs
+
+
 StreamTypeToStream: dict[StreamType, type[Stream]] = {
-    StreamType.VELOCITY_SMOOTH: VelocitySmoothStream,
+    StreamType.TIME: Stream,
     StreamType.DISTANCE: Stream,
+    StreamType.LATLNG: LatLngStream,
+    StreamType.ALTITUDE: Stream,
+    StreamType.VELOCITY_SMOOTH: VelocitySmoothStream,
     StreamType.HEARTRATE: Stream,
     StreamType.CADENCE: Stream,
     StreamType.WATTS: Stream,
@@ -98,6 +109,7 @@ StreamTypeToStream: dict[StreamType, type[Stream]] = {
 def _strava_request(url: str, params: dict[str, Any] | None = None) -> requests.Response:
     """Make a request to the Strava API."""
     params = params or {}
+    logger.debug(f"Making request to {url} with params {params}")
     headers = {"Authorization": strava_config.get_bearer_token()}
     response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
@@ -117,13 +129,6 @@ def get_strava_activity(activity_id: int) -> StravaActivity:
     url = StravaEndpoint.ACTIVITY.value.format(activity_id=activity_id)
     response = _strava_request(url)
     return StravaActivity(**response.json())
-
-
-def get_strava_activity_streams(activity_id: int) -> list[Stream]:
-    """Get all streams for a specific Strava activity by ID."""
-    url = StravaEndpoint.ACTIVITY_STREAMS.value.format(activity_id=activity_id)
-    response = _strava_request(url)
-    return [Stream(**stream) for stream in response.json()]
 
 
 def _check_stream_type(response_element: dict[str, Any], stream_type: StreamType) -> bool:
@@ -161,16 +166,30 @@ def _extract_stream_data(response_data: dict[str, Any] | list[dict[str, Any]], s
 
 def get_strava_activity_stream_by_type(activity_id: int, stream_type: StreamType) -> Stream:
     """Get a specific stream for a Strava activity by type."""
+    logger.debug(f"Getting {stream_type.value} stream for activity {activity_id}")
     url = StravaEndpoint.ACTIVITY_STREAMS_BY_TYPE.value.format(activity_id=activity_id, stream_type=stream_type.value)
     response = _strava_request(url)
-
+    print(response.json())
     # Validate the response contains the requested stream type
     _validate_stream_response(response, stream_type)
 
     # Extract the stream data
     stream_data = _extract_stream_data(response.json(), stream_type)
+    logger.debug(f"sample of {stream_type.value} stream data: {stream_data['data'][:10]}")
 
     return StreamTypeToStream[stream_type](type=stream_type, data=stream_data["data"])
+
+
+def get_strava_activity_streams(activity_id: int) -> list[Stream]:
+    """Get all streams for a specific Strava activity by ID."""
+    streams = []
+    for stream_type in StreamType:
+        try:
+            stream = get_strava_activity_stream_by_type(activity_id, stream_type)
+            streams.append(stream)
+        except ValueError as e:
+            logger.warning(f"Failed to retrieve {stream_type.value} stream for activity {activity_id}: {str(e)[:100]}...")
+    return streams
 
 
 if __name__ == "__main__":
@@ -187,5 +206,8 @@ if __name__ == "__main__":
 
     # Test the get_strava_activity_stream_by_type function
     print(get_strava_activity_stream_by_type(test_id, StreamType.HEARTRATE))
-    print(get_strava_activity_stream_by_type(test_id, StreamType.DISTANCE))
-    print(get_strava_activity_stream_by_type(test_id, StreamType.VELOCITY_SMOOTH))
+    # print(get_strava_activity_stream_by_type(test_id, StreamType.DISTANCE))
+    # print(get_strava_activity_stream_by_type(test_id, StreamType.VELOCITY_SMOOTH))
+
+    # Test the get_strava_activity_streams function
+    # get_strava_activity_streams(test_id)

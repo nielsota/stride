@@ -20,6 +20,8 @@ class StravaConfig(BaseConfig):
     access_token: str = Field(alias="STRAVA_ACCESS_TOKEN")
     refresh_token: str = Field(alias="STRAVA_REFRESH_TOKEN")
     expires_at: datetime = Field(alias="STRAVA_ACCESS_TOKEN_EXPIRES_AT")
+    
+    # TODO: use model config to set env_file to .env
 
     @classmethod
     def from_env(cls) -> "StravaConfig":
