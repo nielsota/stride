@@ -9,6 +9,9 @@ from stride.connections.strava import StravaEndpoint
 
 import requests  # type: ignore
 
+StreamDataType = float | bool | None
+ResponseType = dict[str, Any]
+
 
 class StreamType(str, enum.Enum):
     """Types of data streams available from Strava."""
@@ -62,7 +65,7 @@ class Stream(pydantic.BaseModel):
     """Model representing a Strava stream."""
 
     type: StreamType
-    data: list[float | bool | None]
+    data: list[StreamDataType]
 
     @pydantic.computed_field  # type: ignore[prop-decorator]
     @property
@@ -75,26 +78,45 @@ class VelocitySmoothStream(Stream):
     """Model representing a Strava velocity smooth stream."""
 
     type: StreamType = StreamType.VELOCITY_SMOOTH
-    data: list[float]
 
     @pydantic.computed_field  # type: ignore[prop-decorator]
     @property
-    def velocity_kmh(self) -> list[float]:
+    def velocity_kmh(self) -> list[StreamDataType]:
         """Convert velocity from m/s to km/h."""
-        return [round(v * 3.6, 2) for v in self.data]
+        return [round(v * 3.6, 2) if v is not None else None for v in self.data]
 
 
-class LatLngStream(Stream):
-    """Model representing a Strava latlng stream."""
+class JSONStreamResponseModel(pydantic.BaseModel):
+    """Model representing a JSON response from the Strava API."""
 
-    type: StreamType = StreamType.LATLNG
-    data: list[list[float] | None]  # list of [lat, lng] pairs
+    streams: list[Stream]
+
+    # TODO: Ask Pim about this: why is the input already a stream?
+    # TODO: Why does it contain the streams key even though the response does not?
+    @pydantic.model_validator(mode="before")
+    def model_validator(cls, data: list[Stream] | Stream) -> dict[str, list[Stream]]:
+        """Validate and transform the input data."""
+        if isinstance(data, dict) and "streams" in data:
+            return data
+
+        # Convert single Stream to list if necessary
+        streams = [data] if isinstance(data, Stream) else data
+        return {"streams": streams}
+
+    @property
+    def all_streams(self) -> dict[StreamType, Stream]:
+        """Get all streams from the response."""
+        return {stream.type: stream for stream in self.streams}
+
+    def get_stream_by_type(self, stream_type: StreamType) -> Stream:
+        """Get a stream from the response by type."""
+        return self.all_streams[stream_type]
 
 
 StreamTypeToStream: dict[StreamType, type[Stream]] = {
     StreamType.TIME: Stream,
     StreamType.DISTANCE: Stream,
-    StreamType.LATLNG: LatLngStream,
+    StreamType.LATLNG: Stream,
     StreamType.ALTITUDE: Stream,
     StreamType.VELOCITY_SMOOTH: VelocitySmoothStream,
     StreamType.HEARTRATE: Stream,
@@ -131,53 +153,18 @@ def get_strava_activity(activity_id: int) -> StravaActivity:
     return StravaActivity(**response.json())
 
 
-def _check_stream_type(response_element: dict[str, Any], stream_type: StreamType) -> bool:
-    """Check if a stream exists for a specific Strava activity by type."""
-    return stream_type.value in response_element.values()
-
-
-def _validate_stream_response(response: requests.Response, stream_type: StreamType) -> bool:
-    """Validate the response from the Strava API."""
-    response_data = response.json()
-
-    # Handle single stream response
-    if isinstance(response_data, dict) and _check_stream_type(response_data, stream_type):
-        return True
-
-    # Handle multiple streams response
-    if isinstance(response_data, list) and any(_check_stream_type(stream, stream_type) for stream in response_data):
-        return True
-
-    raise ValueError(f"Stream type {stream_type.value} not found in response: {response_data}")
-
-
-def _extract_stream_data(response_data: dict[str, Any] | list[dict[str, Any]], stream_type: StreamType) -> dict[str, Any]:
-    """Extract stream data from the response."""
-    if isinstance(response_data, dict):
-        return response_data
-
-    if isinstance(response_data, list):
-        for stream in response_data:
-            if stream.get("type") == stream_type.value:
-                return stream
-
-    raise ValueError(f"Could not extract {stream_type.value} data from response")
-
-
 def get_strava_activity_stream_by_type(activity_id: int, stream_type: StreamType) -> Stream:
     """Get a specific stream for a Strava activity by type."""
     logger.debug(f"Getting {stream_type.value} stream for activity {activity_id}")
     url = StravaEndpoint.ACTIVITY_STREAMS_BY_TYPE.value.format(activity_id=activity_id, stream_type=stream_type.value)
-    response = _strava_request(url)
-    print(response.json())
-    # Validate the response contains the requested stream type
-    _validate_stream_response(response, stream_type)
+    print(_strava_request(url).json())
+    stream_response = JSONStreamResponseModel(streams=_strava_request(url).json())
 
     # Extract the stream data
-    stream_data = _extract_stream_data(response.json(), stream_type)
-    logger.debug(f"sample of {stream_type.value} stream data: {stream_data['data'][:10]}")
+    stream_data = stream_response.get_stream_by_type(stream_type)
+    logger.debug(f"sample of {stream_type.value} stream data: {stream_data.data[:10]}")
 
-    return StreamTypeToStream[stream_type](type=stream_type, data=stream_data["data"])
+    return stream_data
 
 
 def get_strava_activity_streams(activity_id: int) -> list[Stream]:
@@ -187,7 +174,7 @@ def get_strava_activity_streams(activity_id: int) -> list[Stream]:
         try:
             stream = get_strava_activity_stream_by_type(activity_id, stream_type)
             streams.append(stream)
-        except ValueError as e:
+        except (ValueError, KeyError) as e:
             logger.warning(f"Failed to retrieve {stream_type.value} stream for activity {activity_id}: {str(e)[:100]}...")
     return streams
 
@@ -205,7 +192,7 @@ if __name__ == "__main__":
     # print(get_strava_activity_streams(test_id))
 
     # Test the get_strava_activity_stream_by_type function
-    print(get_strava_activity_stream_by_type(test_id, StreamType.HEARTRATE))
+    get_strava_activity_stream_by_type(test_id, StreamType.HEARTRATE)
     # print(get_strava_activity_stream_by_type(test_id, StreamType.DISTANCE))
     # print(get_strava_activity_stream_by_type(test_id, StreamType.VELOCITY_SMOOTH))
 
