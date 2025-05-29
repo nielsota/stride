@@ -4,13 +4,14 @@ from datetime import datetime
 from typing import Optional, Any
 from loguru import logger
 
-from stride.config import strava_config
+from stride.config import get_strava_config
 from stride.connections.strava import StravaEndpoint
 
 import requests  # type: ignore
 
 StreamDataType = float | bool | None
 ResponseType = dict[str, Any]
+strava_config = get_strava_config()
 
 
 class StreamType(str, enum.Enum):
@@ -197,4 +198,5 @@ if __name__ == "__main__":
     # print(get_strava_activity_stream_by_type(test_id, StreamType.VELOCITY_SMOOTH))
 
     # Test the get_strava_activity_streams function
-    # get_strava_activity_streams(test_id)
+    # all_streams = get_strava_activity_streams(test_id)
+    # print([stream.stream_length for stream in all_streams])

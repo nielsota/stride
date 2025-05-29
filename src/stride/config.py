@@ -2,6 +2,7 @@ import pydantic
 import pydantic_settings
 from datetime import datetime
 from pydantic import Field
+from dotenv import load_dotenv
 
 
 class BaseConfig(pydantic.BaseModel):
@@ -27,7 +28,15 @@ class StravaConfig(pydantic_settings.BaseSettings):
         return f"Bearer {self.access_token}"
 
 
-strava_config = StravaConfig()
+def get_strava_config() -> StravaConfig:
+    """Get a fresh instance of the Strava config."""
+    # Force reload the .env file
+    load_dotenv(".env", override=True)
+    return StravaConfig()
+
+
+# For backward compatibility
+strava_config = get_strava_config()
 
 if __name__ == "__main__":
-    print(strava_config)
+    print(get_strava_config())

@@ -5,10 +5,10 @@ from dotenv import load_dotenv, set_key
 from datetime import datetime, timezone
 from loguru import logger
 
-from stride.config import strava_config
+from stride.config import get_strava_config
 
 # Load environment variables from .env file
-load_dotenv()
+strava_config = get_strava_config()
 
 
 class StravaEndpoint(str, enum.Enum):
