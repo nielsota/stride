@@ -1,5 +1,6 @@
 import enum
 import pydantic
+import polars as pl
 from datetime import datetime
 from typing import Optional, Any
 from loguru import logger
@@ -92,7 +93,7 @@ class JSONStreamResponseModel(pydantic.BaseModel):
 
     streams: list[Stream]
 
-    # TODO: Ask Pim about this: why is the input already a stream?
+    # TODO: Ask Pim about this: why is the input already a stream even though mode="before"?
     # TODO: Why does it contain the streams key even though the response does not?
     @pydantic.model_validator(mode="before")
     def model_validator(cls, data: list[Stream] | Stream) -> dict[str, list[Stream]]:
@@ -158,7 +159,6 @@ def get_strava_activity_stream_by_type(activity_id: int, stream_type: StreamType
     """Get a specific stream for a Strava activity by type."""
     logger.debug(f"Getting {stream_type.value} stream for activity {activity_id}")
     url = StravaEndpoint.ACTIVITY_STREAMS_BY_TYPE.value.format(activity_id=activity_id, stream_type=stream_type.value)
-    print(_strava_request(url).json())
     stream_response = JSONStreamResponseModel(streams=_strava_request(url).json())
 
     # Extract the stream data
@@ -168,16 +168,25 @@ def get_strava_activity_stream_by_type(activity_id: int, stream_type: StreamType
     return stream_data
 
 
-def get_strava_activity_streams(activity_id: int) -> list[Stream]:
+def get_strava_activity_streams(activity_id: int, stream_types: list[StreamType] | None = None) -> list[Stream]:
     """Get all streams for a specific Strava activity by ID."""
     streams = []
-    for stream_type in StreamType:
+    for stream_type in stream_types or StreamType:
         try:
             stream = get_strava_activity_stream_by_type(activity_id, stream_type)
             streams.append(stream)
         except (ValueError, KeyError) as e:
             logger.warning(f"Failed to retrieve {stream_type.value} stream for activity {activity_id}: {str(e)[:100]}...")
     return streams
+
+
+def get_strava_activity_series(activity_id: int, stream_types: list[StreamType] | None = None) -> pl.DataFrame:
+    """Get all streams for a specific Strava activity by ID."""
+    stream_types = stream_types or StreamType
+    streams = get_strava_activity_streams(activity_id, stream_types)
+
+    # Convert streams to a DataFrame
+    return pl.DataFrame({stream.type.value: stream.data for stream in streams})
 
 
 if __name__ == "__main__":
@@ -193,10 +202,13 @@ if __name__ == "__main__":
     # print(get_strava_activity_streams(test_id))
 
     # Test the get_strava_activity_stream_by_type function
-    get_strava_activity_stream_by_type(test_id, StreamType.HEARTRATE)
+    # print(get_strava_activity_stream_by_type(test_id, StreamType.HEARTRATE))
     # print(get_strava_activity_stream_by_type(test_id, StreamType.DISTANCE))
     # print(get_strava_activity_stream_by_type(test_id, StreamType.VELOCITY_SMOOTH))
 
     # Test the get_strava_activity_streams function
     # all_streams = get_strava_activity_streams(test_id)
     # print([stream.stream_length for stream in all_streams])
+
+    # Test the get_strava_activity_series function
+    print(get_strava_activity_series(test_id, [StreamType.DISTANCE, StreamType.TIME, StreamType.HEARTRATE]))
