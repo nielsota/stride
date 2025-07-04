@@ -3,8 +3,9 @@ from loguru import logger
 from typing import Any
 from stride.config import get_strava_config
 from stride.strava.activities import StravaEndpoint
-from stride.database.database import create_database
+from stride.database.database import create_database, engine
 from stride.database.models import Activity, Stream, StreamType, JSONStreamResponseModel, JSONStreamData
+import sqlmodel
 
 strava_config = get_strava_config()
 
@@ -42,15 +43,22 @@ def get_strava_activity_stream_by_type(activity_id: int, stream_type: StreamType
     # TODO: why does this only work if I add the raw_streams key? Don't need to do this for the activities response
     stream_response = JSONStreamResponseModel(raw_streams=[JSONStreamData(**stream) for stream in response.json()])
 
-    logger.debug(f"response: {response.json()}") # raw
+    # logger.debug(f"response: {response.json()}") # raw
     # logger.debug(f"stream_response: {stream_response}") # JSONStreamResponseModel, note the string "type" from raw response is converted to StreamType enum
     # logger.debug(f"stream_response.streams: {stream_response.streams}") # dict of StreamType -> Stream
     # TODO: how to convert JSONStreamData.data from list[float] to list[StreamEntry] objects? -> use computed_field in JSONStreamData to post-process the data into StreamEntry objects
 
-    # Extract the stream data
-    stream_data = stream_response.get_stream(stream_type)
-    # logger.debug(f"sample of {stream_type.value} stream data: {stream_data.data[:10]}")
+    logger.debug(f"stream_response.raw_streams[0].stream_type: {stream_response.raw_streams[0].stream_type}")
+    logger.debug(f"stream_response.raw_streams[0].stream_entries: {stream_response.raw_streams[0].stream_entries}")
 
+    logger.debug(f"stream_response.streams: {stream_response.streams.keys()}")
+
+    # logger.debug(f"stream_response.streams[StreamType.DISTANCE]: {stream_response.streams[StreamType.DISTANCE]}")
+
+    # Extract the stream data
+    logger.debug(f"stream_response.streams[StreamType.VELOCITY_SMOOTH]: {stream_response.streams[StreamType.VELOCITY_SMOOTH].stream_entries[:10]}")
+    stream_data = stream_response.get_stream(stream_type)
+    logger.debug(f"sample of {stream_type.value} stream data: {stream_data.stream_entries[:10]}")
     return stream_data
 
 
@@ -66,13 +74,12 @@ def main() -> None:
     create_database()
     activities = list_strava_activities(per_page=1, page=1, include_streams=[StreamType.VELOCITY_SMOOTH])
     logger.debug(f"activities: {activities}")
+    logger.debug(f"activities[0].streams: {activities[0].streams}")
+    logger.debug(f"activities[0].streams[0].stream_entries: {activities[0].streams[0].stream_entries}")
 
-    # activity_id = activities[0].id
-    # stream_data = get_strava_activity_stream_by_type(activity_id, StreamType.VELOCITY_SMOOTH)
-
-    # with sqlmodel.Session(engine) as session:
-    #    session.add_all(activities)
-    #    session.commit()
+    with sqlmodel.Session(engine) as session:
+        session.add_all(activities)
+        session.commit()
 
 
 if __name__ == "__main__":

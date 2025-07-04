@@ -9,6 +9,8 @@ from typing import Any
 # ondelete is on the Field, not the Relationship: on the many side
 # use alias if the field name returned by the API is different from the field name you want in the model
 
+# NOTE: how can I use the debugger with uv?
+
 StreamDataType = float
 
 
@@ -98,13 +100,9 @@ class JSONStreamData(sqlmodel.SQLModel, table=False):
     stream_data: list[float] = Field(alias="data")  # Keep as list[float] for JSON parsing
 
     @computed_field
-    @property
     def stream_entries(self) -> list[StreamEntry]:
         """Convert this JSON stream data to StreamEntry objects."""
-        return [
-            StreamEntry(index=index, stream_type=self.stream_type, stream_entry=stream_entry)
-            for index, stream_entry in enumerate(self.stream_data)
-        ]
+        return [StreamEntry(index=index, stream_type=self.stream_type, stream_entry=stream_entry) for index, stream_entry in enumerate(self.stream_data)]
 
 
 class JSONStreamResponseModel(sqlmodel.SQLModel, table=False):
@@ -126,10 +124,9 @@ class JSONStreamResponseModel(sqlmodel.SQLModel, table=False):
     # NOTE: difficulty is in going from a list of floats (JSONStreamData) to a list of StreamEntry objects in the JSONStreamResponseModel -> Stream conversion
     # NOTE: maybe using the before validator to convert the JSONStreamData.data to a list of StreamEntry objects?
     @computed_field
-    @property
     def streams(self) -> dict[StreamType, Stream]:
         """Get all streams from the response."""
-        return {stream.stream_type: Stream(stream_type=stream.stream_type, data=stream.stream_entries) for stream in self.raw_streams}
+        return {json_stream_data.stream_type: Stream(stream_type=json_stream_data.stream_type, stream_entries=json_stream_data.stream_entries) for json_stream_data in self.raw_streams}
 
     def get_stream(self, stream_type: StreamType) -> Stream:
         """Get a stream from the response by type."""
