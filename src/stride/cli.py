@@ -1,10 +1,14 @@
 import typer
-from stride.connections.cli import app as connections_app
+from stride.strava.connection import update_strava_config
 
 app = typer.Typer()
 
-# Add the connections CLI as a sub-app
-app.add_typer(connections_app, name="connections")
+@app.command("strava-setup")
+def strava_setup() -> None:
+    """
+    Run Strava setup and update the config.
+    """
+    update_strava_config()
 
 if __name__ == "__main__":
     app()

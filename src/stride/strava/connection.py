@@ -1,37 +1,19 @@
 import requests  # type: ignore
-import pydantic
-import enum
 from dotenv import load_dotenv, set_key
 from datetime import datetime, timezone
 from loguru import logger
 
 from stride.config import get_strava_config
+from .endpoints import StravaEndpoints
+from .models import StravaAccessTokenResponse
 
 # Load environment variables from .env file
 strava_config = get_strava_config()
 
 
-class StravaEndpoint(str, enum.Enum):
-    TOKEN = "https://www.strava.com/oauth/token"
-    ATHLETE_ACTIVITIES = "https://www.strava.com/api/v3/athlete/activities"
-    ACTIVITY = "https://www.strava.com/api/v3/activities/{activity_id}"
-    ACTIVITY_STREAMS = "https://www.strava.com/api/v3/activities/{activity_id}/streams"
-    ACTIVITY_STREAMS_BY_TYPE = "https://www.strava.com/api/v3/activities/{activity_id}/streams/{stream_type}"
-
-
-class StravaAccessTokenResponse(pydantic.BaseModel):
-    """Response from the Strava API when refreshing an access token."""
-
-    token_type: str
-    access_token: str
-    refresh_token: str
-    expires_at: datetime
-    expires_in: int
-
-
 def refresh_strava_access_token() -> StravaAccessTokenResponse:
     """Use a refresh token to obtain a new Strava access token."""
-    url = StravaEndpoint.TOKEN.value
+    url = StravaEndpoints.TOKEN.value
     payload = {"client_id": strava_config.client_id, "client_secret": strava_config.client_secret, "grant_type": "refresh_token", "refresh_token": strava_config.refresh_token}
     logger.debug("Refreshing Strava access token.")
     response = requests.post(url, data=payload)
