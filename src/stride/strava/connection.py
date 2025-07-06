@@ -11,7 +11,7 @@ from .models import StravaAccessTokenResponse
 strava_config = get_strava_config()
 
 
-def refresh_strava_access_token() -> StravaAccessTokenResponse:
+def _refresh_strava_access_token() -> StravaAccessTokenResponse:
     """Use a refresh token to obtain a new Strava access token."""
     url = StravaEndpoints.TOKEN.value
     payload = {"client_id": strava_config.client_id, "client_secret": strava_config.client_secret, "grant_type": "refresh_token", "refresh_token": strava_config.refresh_token}
@@ -22,9 +22,9 @@ def refresh_strava_access_token() -> StravaAccessTokenResponse:
     return StravaAccessTokenResponse(**response.json())
 
 
-def update_strava_access_token(env_path: str = ".env") -> bool:
+def _update_strava_access_token(env_path: str = ".env") -> bool:
     """Update the Strava access token and refresh token in the .env file."""
-    response = refresh_strava_access_token()
+    response = _refresh_strava_access_token()
     load_dotenv(env_path, override=True)
     logger.debug(f"Updating env variables in {env_path}")
     set_key(env_path, "STRAVA_ACCESS_TOKEN", response.access_token)
@@ -34,23 +34,15 @@ def update_strava_access_token(env_path: str = ".env") -> bool:
     return True
 
 
-def check_strava_access_token_validity() -> bool:
+def _check_strava_access_token_validity() -> bool:
     """Check if the Strava access token is valid."""
     return strava_config.expires_at > datetime.now(timezone.utc)
 
 
 def update_strava_config(env_path: str = ".env") -> bool:
     """Update the Strava config in the .env file."""
-    if check_strava_access_token_validity():
+    if _check_strava_access_token_validity():
         logger.info("Strava access token is valid, skipping update")
         return True
     logger.info("Strava access token is invalid, updating...")
-    return update_strava_access_token(env_path)
-
-
-if __name__ == "__main__":
-    # print(list_strava_activities(access_token))
-    # print(refresh_strava_access_token(client_id, client_secret, refresh_token))
-    # print(update_strava_access_token())
-    # print(check_strava_access_token_validity())
-    print(update_strava_config())
+    return _update_strava_access_token(env_path)

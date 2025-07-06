@@ -6,6 +6,7 @@ from typing import Any
 
 StravaStreamDataType = float
 
+
 class StravaStreamType(enum.StrEnum):
     """Types of data streams available from Strava."""
 
@@ -20,6 +21,7 @@ class StravaStreamType(enum.StrEnum):
     TEMP = "temp"
     MOVING = "moving"
     GRADE_SMOOTH = "grade_smooth"
+
 
 class StravaAccessTokenResponse(sqlmodel.SQLModel, table=False):
     """Response from the Strava API when refreshing an access token."""
