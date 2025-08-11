@@ -1,5 +1,6 @@
 import sqlmodel
 import enum
+import rich.repr
 from datetime import datetime
 from pydantic import ConfigDict, model_validator, Field
 from typing import Any
@@ -74,18 +75,31 @@ class StravaJSONStreamDataResponseModel(sqlmodel.SQLModel, table=False):
     stream_type: StravaStreamType = Field(alias="type")
     stream_data: list[float] = Field(alias="data")  # Keep as list[float] for JSON parsing
 
+    def __rich_repr__(self) -> rich.repr.Result:
+        yield "stream_type", self.stream_type.value
+        yield "stream_data", (str(self.stream_data[:10]) + "..." if len(self.stream_data) > 10 else str(self.stream_data))
 
+
+# NOTE: if I change streams to raw_streams, the model validator will break, why?
 class StravaJSONStreamResponseModel(sqlmodel.SQLModel, table=False):
     """Model representing a JSON response from the Strava API."""
 
-    raw_streams: list[StravaJSONStreamDataResponseModel]
+    streams: list[StravaJSONStreamDataResponseModel]
 
     @model_validator(mode="before")
     def model_validator(cls, data: Any) -> dict[str, Any]:
         """Validate and transform the input data."""
-        if isinstance(data, dict) and "raw_streams" in data:
+        if isinstance(data, dict) and "streams" in data:
             return data
 
         # Convert single dict to list if necessary
         streams = [data] if isinstance(data, dict) else data
-        return {"raw_streams": streams}
+        return {"streams": streams}
+
+    def __contains__(self, other: "StravaJSONStreamResponseModel") -> bool:
+        """Check if a StravaJSONStreamResponseModel is contained in another."""
+        return any(stream.stream_type == other.stream_type for stream in self.streams)
+
+    def __add__(self, other: "StravaJSONStreamResponseModel") -> "StravaJSONStreamResponseModel":
+        """Add two StravaJSONStreamResponseModel objects together."""
+        return StravaJSONStreamResponseModel(streams=([stream for stream in self.streams if stream not in other.streams] + other.streams))

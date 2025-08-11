@@ -14,7 +14,12 @@ strava_config = get_strava_config()
 def _refresh_strava_access_token() -> StravaAccessTokenResponse:
     """Use a refresh token to obtain a new Strava access token."""
     url = StravaEndpoints.TOKEN.value
-    payload = {"client_id": strava_config.client_id, "client_secret": strava_config.client_secret, "grant_type": "refresh_token", "refresh_token": strava_config.refresh_token}
+    payload = {
+        "client_id": strava_config.client_id,
+        "client_secret": strava_config.client_secret,
+        "grant_type": "refresh_token",
+        "refresh_token": strava_config.refresh_token,
+    }
     logger.debug("Refreshing Strava access token.")
     response = requests.post(url, data=payload)
     response.raise_for_status()

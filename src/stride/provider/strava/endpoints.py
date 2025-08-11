@@ -1,5 +1,6 @@
 import enum
 
+
 class StravaEndpoints(str, enum.Enum):
     TOKEN = "https://www.strava.com/oauth/token"
     ATHLETE_ACTIVITIES = "https://www.strava.com/api/v3/athlete/activities"
